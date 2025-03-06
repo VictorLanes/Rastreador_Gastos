@@ -1,6 +1,6 @@
 # 💰 Rastreador_Gastos
 
-Aplicação desenvolvida em **Python** com interface gráfica moderna para gerenciar suas **despesas**, **cartões de crédito** e **orçamentos mensais** de forma prática e eficiente.
+Aplicação desenvolvida em **Python** com interface gráfica para gerenciar suas **despesas**, **cartões de crédito** e **orçamentos mensais** de forma prática e eficiente.
 
 ---
 
