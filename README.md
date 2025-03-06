@@ -32,7 +32,7 @@ Aplicação desenvolvida em **Python** com interface gráfica moderna para geren
 
 ### ✅ Pré-requisitos
 - Python 3.8 ou superior instalado.
-- 
+  
 ###📂 Estrutura de Arquivos
   📁 Projeto
    ├── financeiro.db        # Banco de dados local (gerado automaticamente)
