@@ -34,9 +34,15 @@ class SpendingTracker(ttk.Window):
         # -------------------------------------------------
         # VARIÁVEIS DE CONTROLE (Cartão de Crédito)
         # -------------------------------------------------
-        # Cada cartão: (nome_cartao, nome_usuario, numero (mascarado), validade, bandeira, limite, fechamento, vencimento)
+        # Cada cartão: (id, nome_cartao, nome_usuario, número (mascarado), validade, bandeira, limite)
         if not hasattr(self, 'cartoes'):
             self.cartoes = []
+
+        # -------------------------------------------------
+        # VARIÁVEIS DE CONTROLE (Metas)
+        # -------------------------------------------------
+        # Cada meta: (id, nome, valor_meta, valor_atual, data_inicial, data_final)
+        self.metas = []
 
         # -------------------------------------------------
         # NOTEBOOK (Abas)
@@ -47,25 +53,29 @@ class SpendingTracker(ttk.Window):
         self.tab_despesas = ttk.Frame(self.notebook, padding=10)
         self.tab_cartao = ttk.Frame(self.notebook, padding=10)
         self.tab_relatorios = ttk.Frame(self.notebook, padding=10)
+        self.tab_metas = ttk.Frame(self.notebook, padding=10)
 
         self.notebook.add(self.tab_despesas, text="Despesas")
         self.notebook.add(self.tab_cartao, text="Cartão de Crédito")
         self.notebook.add(self.tab_relatorios, text="Relatórios")
+        self.notebook.add(self.tab_metas, text="Metas")
 
         # -------------------------------------------------
         # ABA: DESPESAS
         # -------------------------------------------------
         self.configurar_aba_despesas()
-
         # -------------------------------------------------
         # ABA: CARTÃO DE CRÉDITO
         # -------------------------------------------------
         self.configurar_aba_cartao()
-
         # -------------------------------------------------
         # ABA: RELATÓRIOS
         # -------------------------------------------------
         self.configurar_aba_relatorios()
+        # -------------------------------------------------
+        # ABA: METAS
+        # -------------------------------------------------
+        self.configurar_aba_metas()
 
     # ----- Conexão com o Banco de Dados (SQLite) -----
     def conectar_banco(self):
@@ -85,6 +95,7 @@ class SpendingTracker(ttk.Window):
                 cartao_utilizado TEXT
             )
         """)
+        # Tabela Cartões – removidos os campos de fechamento e vencimento
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS cartoes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,9 +104,17 @@ class SpendingTracker(ttk.Window):
                 numero TEXT,
                 validade TEXT,
                 bandeira TEXT,
-                limite REAL,
-                fechamento TEXT,
-                vencimento TEXT
+                limite REAL
+            )
+        """)
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS metas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                valor_meta REAL,
+                valor_atual REAL,
+                data_inicial TEXT,
+                data_final TEXT
             )
         """)
         self.conn.commit()
@@ -104,8 +123,11 @@ class SpendingTracker(ttk.Window):
         try:
             self.cursor.execute("SELECT ano, mes, despesa, valor, vencimento, categoria, observacao, pagamento, cartao_utilizado FROM despesas")
             self.despesas = self.cursor.fetchall()
-            self.cursor.execute("SELECT nome_cartao, nome_usuario, numero, validade, bandeira, limite, fechamento, vencimento FROM cartoes")
+            # Incluímos o campo id para os cartões
+            self.cursor.execute("SELECT id, nome_cartao, nome_usuario, numero, validade, bandeira, limite FROM cartoes")
             self.cartoes = self.cursor.fetchall()
+            self.cursor.execute("SELECT id, nome, valor_meta, valor_atual, data_inicial, data_final FROM metas")
+            self.metas = self.cursor.fetchall()
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao carregar dados do banco: {e}")
 
@@ -124,7 +146,6 @@ class SpendingTracker(ttk.Window):
         self.frame_temas = ttk.Frame(self.tab_despesas, padding=10)
         self.frame_temas.pack(fill=ttk.X, pady=5)
         ttk.Label(self.frame_temas, text="Tema:", font=("Helvetica", 10, "bold")).pack(side=ttk.LEFT, padx=5)
-        # Apenas duas opções: Modo Claro e Modo Escuro
         self.tema_var = ttk.StringVar(value="Modo Claro")
         self.combo_tema = ttk.Combobox(self.frame_temas, textvariable=self.tema_var, state="readonly", width=15)
         self.combo_tema["values"] = ["Modo Claro", "Modo Escuro"]
@@ -210,7 +231,6 @@ class SpendingTracker(ttk.Window):
         entry_vencimento = ttk.Entry(self.frame_entrada, width=20)
         entry_vencimento.grid(row=2, column=1, padx=5, pady=5, sticky=ttk.W)
         entry_vencimento.insert(0, placeholders[2])
-        # Ao perder o foco, formata o campo de data automaticamente
         entry_vencimento.bind("<FocusOut>", lambda event, e=entry_vencimento, p=placeholders[2]: self.formatar_data(event, e, p))
         self.campos[labels[2]] = entry_vencimento
         ToolTip(entry_vencimento, text="Informe a data de vencimento no formato dd/mm/yyyy. (Ex.: 05041999 será convertido para 05/04/1999)")
@@ -243,7 +263,7 @@ class SpendingTracker(ttk.Window):
         ttk.Label(self.frame_entrada, text="Cartão Utilizado:", font=("Helvetica", 10, "bold")).grid(row=6, column=0, padx=5, pady=5, sticky=ttk.E)
         self.cartao_utilizado_var = ttk.StringVar()
         self.combo_cartao_utilizado = ttk.Combobox(self.frame_entrada, textvariable=self.cartao_utilizado_var,
-                                                   values=[c[0] for c in self.cartoes] if self.cartoes else [],
+                                                   values=[c[1] for c in self.cartoes] if self.cartoes else [],
                                                    state="readonly", width=18)
         self.combo_cartao_utilizado.grid(row=6, column=1, padx=5, pady=5, sticky=ttk.W)
         ToolTip(self.combo_cartao_utilizado, text="Selecione o cartão utilizado (se for Cartão de Crédito).")
@@ -271,6 +291,9 @@ class SpendingTracker(ttk.Window):
         self.botao_salvar_excel = ttk.Button(self.frame_botoes, text="Salvar no Excel", bootstyle=PRIMARY, command=self.salvar_no_excel)
         self.botao_salvar_excel.pack(side=ttk.LEFT, padx=5)
         ToolTip(self.botao_salvar_excel, text="Exporte os dados para um arquivo Excel.")
+        self.botao_importar = ttk.Button(self.frame_botoes, text="Importar Planilha", bootstyle=INFO, command=self.importar_planilha)
+        self.botao_importar.pack(side=ttk.LEFT, padx=5)
+        ToolTip(self.botao_importar, text="Importe despesas de uma planilha Excel.")
         self.botao_backup = ttk.Button(self.frame_botoes, text="Backup DB", bootstyle=INFO, command=self.backup_db)
         self.botao_backup.pack(side=ttk.LEFT, padx=5)
         ToolTip(self.botao_backup, text="Realize um backup do banco de dados.")
@@ -282,7 +305,7 @@ class SpendingTracker(ttk.Window):
         ToolTip(self.botao_sair, text="Feche o aplicativo.")
 
     # -------------------------
-    # LÓGICA DE DESPESAS
+    # Lógica de Despesas
     # -------------------------
     def mudar_tema(self, event=None):
         if self.tema_var.get() == "Modo Claro":
@@ -365,7 +388,7 @@ class SpendingTracker(ttk.Window):
             campo.delete(0, "end")
         self.categoria_var.set("")
         self.forma_pagamento_var.set(self.formas_pagamento[0])
-        self.combo_cartao_utilizado["values"] = [c[0] for c in self.cartoes]
+        self.combo_cartao_utilizado["values"] = [c[1] for c in self.cartoes]
 
     def excluir_despesa(self):
         selecionado = self.tabela.selection()
@@ -446,17 +469,19 @@ class SpendingTracker(ttk.Window):
 
         # Aba Cartões
         cartoes_sheet = workbook.create_sheet(title="Cartões")
-        cabecalho_cartoes = ["Nome do Cartão", "Nome do Usuário", "Número", "Validade", "Bandeira", "Limite", "Fechamento", "Vencimento"]
+        cabecalho_cartoes = ["Nome do Cartão", "Nome do Usuário", "Número", "Validade", "Bandeira", "Limite"]
         cartoes_sheet.append(cabecalho_cartoes)
         for cartao in self.cartoes:
-            cartoes_sheet.append(cartao)
+            # Exibe os dados sem o id
+            cartao_exibicao = (cartao[1], cartao[2], cartao[3], cartao[4], cartao[5], cartao[6])
+            cartoes_sheet.append(cartao_exibicao)
         for col in range(1, cartoes_sheet.max_column + 1):
             cell = cartoes_sheet.cell(row=1, column=col)
             cell.font = bold_font
             cell.alignment = center_alignment
             cell.fill = header_fill
             cell.border = thin_border
-        cartoes_sheet.auto_filter.ref = f"A1:H1"
+        cartoes_sheet.auto_filter.ref = f"A1:F1"
         for row in cartoes_sheet.iter_rows(min_row=2, max_row=cartoes_sheet.max_row, min_col=1, max_col=cartoes_sheet.max_column):
             for cell in row:
                 cell.border = thin_border
@@ -533,34 +558,34 @@ class SpendingTracker(ttk.Window):
         self.entry_limite = ttk.Entry(self.frame_cartao_form, width=15)
         self.entry_limite.grid(row=5, column=1, padx=5, pady=5, sticky=tk.W)
         ToolTip(self.entry_limite, text="Digite o limite de crédito do cartão (ex: 1000,00).")
-        ttk.Label(self.frame_cartao_form, text="Data de Fechamento (dd/mm/yyyy):", font=("Helvetica", 10, "bold")).grid(row=6, column=0, padx=5, pady=5, sticky=tk.E)
-        self.entry_fechamento = ttk.Entry(self.frame_cartao_form, width=15)
-        self.entry_fechamento.grid(row=6, column=1, padx=5, pady=5, sticky=tk.W)
-        ToolTip(self.entry_fechamento, text="Digite a data de fechamento da fatura (ex: 05/03/2025).")
-        ttk.Label(self.frame_cartao_form, text="Data de Vencimento (dd/mm/yyyy):", font=("Helvetica", 10, "bold")).grid(row=7, column=0, padx=5, pady=5, sticky=tk.E)
-        self.entry_vencimento_fatura = ttk.Entry(self.frame_cartao_form, width=15)
-        self.entry_vencimento_fatura.grid(row=7, column=1, padx=5, pady=5, sticky=tk.W)
-        ToolTip(self.entry_vencimento_fatura, text="Digite a data de vencimento da fatura (ex: 15/03/2025).")
-        self.botao_cadastrar_cartao = ttk.Button(self.frame_cartao_form, text="Cadastrar Cartão", bootstyle=SUCCESS, command=self.cadastrar_cartao)
-        self.botao_cadastrar_cartao.grid(row=8, column=0, columnspan=2, pady=10)
+        
+        # Botões de ação para Cartão
+        self.frame_cartao_botoes = ttk.Frame(self.tab_cartao, padding=10)
+        self.frame_cartao_botoes.pack(fill=ttk.X, pady=5)
+        self.botao_cadastrar_cartao = ttk.Button(self.frame_cartao_botoes, text="Cadastrar Cartão", bootstyle=SUCCESS, command=self.cadastrar_cartao)
+        self.botao_cadastrar_cartao.pack(side=ttk.LEFT, padx=5)
+        self.botao_editar_cartao = ttk.Button(self.frame_cartao_botoes, text="Editar Cartão", bootstyle=INFO, command=self.atualizar_cartao)
+        self.botao_editar_cartao.pack(side=ttk.LEFT, padx=5)
+        self.botao_excluir_cartao = ttk.Button(self.frame_cartao_botoes, text="Excluir Cartão", bootstyle=DANGER, command=self.excluir_cartao)
+        self.botao_excluir_cartao.pack(side=ttk.LEFT, padx=5)
 
         self.frame_cartao_tabela = ttk.Frame(self.tab_cartao, padding=10)
         self.frame_cartao_tabela.pack(fill=ttk.BOTH, expand=True, pady=5)
-        self.tabela_cartao = ttk.Treeview(self.frame_cartao_tabela,
-                                          columns=("Nome do Cartão", "Nome do Usuário", "Número", "Validade", "Bandeira", "Limite", "Fechamento", "Vencimento"),
-                                          show="headings")
+        colunas = ("Nome do Cartão", "Nome do Usuário", "Número", "Validade", "Bandeira", "Limite")
+        self.tabela_cartao = ttk.Treeview(self.frame_cartao_tabela, columns=colunas, show="headings")
         self.tabela_cartao.pack(fill=ttk.BOTH, expand=True)
-        col_cartao = ("Nome do Cartão", "Nome do Usuário", "Número", "Validade", "Bandeira", "Limite", "Fechamento", "Vencimento")
-        for col in col_cartao:
+        for col in colunas:
             self.tabela_cartao.heading(col, text=col)
             self.tabela_cartao.column(col, width=120, anchor="center")
+        # Vincula seleção para carregar dados no formulário
+        self.tabela_cartao.bind("<<TreeviewSelect>>", self.carregar_cartao_selecionado)
 
         self.frame_dashboard = ttk.Frame(self.tab_cartao, padding=10)
         self.frame_dashboard.pack(fill=ttk.X, pady=5)
         ttk.Label(self.frame_dashboard, text="Dashboard do Cartão:", font=("Helvetica", 12, "bold")).pack(side=ttk.LEFT, padx=5)
         self.cartao_dashboard_var = ttk.StringVar()
         self.combo_dashboard = ttk.Combobox(self.frame_dashboard, textvariable=self.cartao_dashboard_var, state="readonly", width=25)
-        self.combo_dashboard["values"] = [c[0] for c in self.cartoes]
+        self.combo_dashboard["values"] = [c[1] for c in self.cartoes] if self.cartoes else []
         if self.cartoes:
             self.combo_dashboard.current(0)
         self.combo_dashboard.pack(side=ttk.LEFT, padx=5)
@@ -571,12 +596,10 @@ class SpendingTracker(ttk.Window):
         self.label_dashboard.pack(side=ttk.LEFT, padx=5)
 
         ttk.Label(self.tab_cartao, text="Despesas no Cartão de Crédito", font=("Helvetica", 12, "bold")).pack(pady=10)
-        self.tabela_despesas_cartao = ttk.Treeview(self.tab_cartao,
-                                                   columns=("Ano", "Mês", "Despesa", "Valor", "Vencimento", "Categoria", "Observação", "Pagamento", "Cartão Utilizado"),
-                                                   show="headings")
+        colunas = ("Ano", "Mês", "Despesa", "Valor", "Vencimento", "Categoria", "Observação", "Pagamento", "Cartão Utilizado")
+        self.tabela_despesas_cartao = ttk.Treeview(self.tab_cartao, columns=colunas, show="headings")
         self.tabela_despesas_cartao.pack(fill=ttk.BOTH, expand=True, pady=5)
-        col_desp_cartao = ("Ano", "Mês", "Despesa", "Valor", "Vencimento", "Categoria", "Observação", "Pagamento", "Cartão Utilizado")
-        for col in col_desp_cartao:
+        for col in colunas:
             self.tabela_despesas_cartao.heading(col, text=col)
             self.tabela_despesas_cartao.column(col, width=120, anchor="center")
 
@@ -587,57 +610,44 @@ class SpendingTracker(ttk.Window):
         validade = self.entry_validade.get().strip()
         bandeira = self.combo_bandeira.get().strip()
         limite_texto = self.entry_limite.get().strip().replace(',', '.')
-        fechamento = self.entry_fechamento.get().strip()
-        vencimento = self.entry_vencimento_fatura.get().strip()
-
-        if (not nome_cartao or not nome_usuario or not numero or not validade or not bandeira
-            or not limite_texto or not fechamento or not vencimento):
+        if not nome_cartao or not nome_usuario or not numero or not validade or not bandeira or not limite_texto:
             messagebox.showerror("Erro", "Preencha todos os campos obrigatórios.")
             return
-
         try:
             datetime.strptime(validade, "%m/%y")
         except ValueError:
             messagebox.showerror("Erro", "Data de validade inválida. Use o formato mm/aa.")
             return
-
-        try:
-            datetime.strptime(fechamento, "%d/%m/%Y")
-            datetime.strptime(vencimento, "%d/%m/%Y")
-        except ValueError:
-            messagebox.showerror("Erro", "Data de fechamento ou vencimento inválida (use dd/mm/yyyy).")
-            return
-
         try:
             limite = float(limite_texto)
         except ValueError:
             messagebox.showerror("Erro", "O campo Limite de Crédito deve ser numérico.")
             return
-
         if len(numero) >= 4:
             numero_mascarado = "**** " + numero[-4:]
         else:
             numero_mascarado = numero
-
+        # Insere os dados do cartão (sem fechamento e vencimento)
         cartao = (
             nome_cartao,
             nome_usuario,
             numero_mascarado,
             validade,
             bandeira,
-            f"{limite:.2f}".replace('.', ','),
-            fechamento,
-            vencimento
+            f"{limite:.2f}".replace('.', ',')
         )
-        self.cartoes.append(cartao)
         try:
             self.cursor.execute(
-                "INSERT INTO cartoes (nome_cartao, nome_usuario, numero, validade, bandeira, limite, fechamento, vencimento) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO cartoes (nome_cartao, nome_usuario, numero, validade, bandeira, limite) VALUES (?, ?, ?, ?, ?, ?)",
                 cartao
             )
             self.conn.commit()
+            # Recupera o id recém-inserido e atualiza a lista de cartões
+            card_id = self.cursor.lastrowid
+            self.cartoes.append((card_id,) + cartao)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao inserir cartão no banco: {e}")
+            return
         self.atualizar_tabela_cartao()
         messagebox.showinfo("Sucesso", "Cartão cadastrado com sucesso!")
         self.entry_nome_cartao.delete(0, "end")
@@ -646,95 +656,166 @@ class SpendingTracker(ttk.Window):
         self.entry_validade.delete(0, "end")
         self.combo_bandeira.current(0)
         self.entry_limite.delete(0, "end")
-        self.entry_fechamento.delete(0, "end")
-        self.entry_vencimento_fatura.delete(0, "end")
-        self.combo_cartao_utilizado["values"] = [c[0] for c in self.cartoes]
-        self.combo_dashboard["values"] = [c[0] for c in self.cartoes]
+        self.combo_cartao_utilizado["values"] = [c[1] for c in self.cartoes]
+        self.combo_dashboard["values"] = [c[1] for c in self.cartoes]
         if self.cartoes:
             self.combo_dashboard.current(0)
             self.atualizar_dashboard_cartao()
 
+    def carregar_cartao_selecionado(self, event):
+        selected = self.tabela_cartao.selection()
+        if not selected:
+            return
+        card_id = int(selected[0])
+        # Procura o cartão com esse id
+        for card in self.cartoes:
+            if card[0] == card_id:
+                self.card_edit_id = card_id
+                self.entry_nome_cartao.delete(0, tk.END)
+                self.entry_nome_cartao.insert(0, card[1])
+                self.entry_nome_usuario.delete(0, tk.END)
+                self.entry_nome_usuario.insert(0, card[2])
+                # Note que o número já está mascarado
+                self.entry_numero_cartao.delete(0, tk.END)
+                self.entry_numero_cartao.insert(0, card[3])
+                self.entry_validade.delete(0, tk.END)
+                self.entry_validade.insert(0, card[4])
+                self.combo_bandeira.set(card[5])
+                self.entry_limite.delete(0, tk.END)
+                self.entry_limite.insert(0, card[6])
+                break
+
+    def atualizar_cartao(self):
+        # Verifica se um cartão foi selecionado para edição
+        if not hasattr(self, "card_edit_id"):
+            messagebox.showwarning("Aviso", "Selecione um cartão para editar.")
+            return
+        card_id = self.card_edit_id
+        nome_cartao = self.entry_nome_cartao.get().strip()
+        nome_usuario = self.entry_nome_usuario.get().strip()
+        numero = self.entry_numero_cartao.get().strip()
+        validade = self.entry_validade.get().strip()
+        bandeira = self.combo_bandeira.get().strip()
+        limite_texto = self.entry_limite.get().strip().replace(',', '.')
+        if not nome_cartao or not nome_usuario or not numero or not validade or not bandeira or not limite_texto:
+            messagebox.showerror("Erro", "Preencha todos os campos obrigatórios para edição.")
+            return
+        try:
+            datetime.strptime(validade, "%m/%y")
+        except ValueError:
+            messagebox.showerror("Erro", "Data de validade inválida. Use o formato mm/aa.")
+            return
+        try:
+            limite = float(limite_texto)
+        except ValueError:
+            messagebox.showerror("Erro", "O campo Limite de Crédito deve ser numérico.")
+            return
+        if len(numero) >= 4:
+            numero_mascarado = "**** " + numero[-4:]
+        else:
+            numero_mascarado = numero
+        try:
+            self.cursor.execute(
+                "UPDATE cartoes SET nome_cartao=?, nome_usuario=?, numero=?, validade=?, bandeira=?, limite=? WHERE id=?",
+                (nome_cartao, nome_usuario, numero_mascarado, validade, bandeira, f"{limite:.2f}".replace('.', ','), card_id)
+            )
+            self.conn.commit()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao atualizar cartão: {e}")
+            return
+        # Atualiza a lista de cartões
+        for i, card in enumerate(self.cartoes):
+            if card[0] == card_id:
+                self.cartoes[i] = (card_id, nome_cartao, nome_usuario, numero_mascarado, validade, bandeira, f"{limite:.2f}".replace('.', ','))
+                break
+        self.atualizar_tabela_cartao()
+        messagebox.showinfo("Sucesso", "Cartão atualizado com sucesso!")
+        # Limpa a variável de edição
+        self.card_edit_id = None
+
+    def excluir_cartao(self):
+        selected = self.tabela_cartao.selection()
+        if not selected:
+            messagebox.showwarning("Aviso", "Selecione um cartão para excluir.")
+            return
+        card_id = int(selected[0])
+        try:
+            self.cursor.execute("DELETE FROM cartoes WHERE id=?", (card_id,))
+            self.conn.commit()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao excluir cartão: {e}")
+            return
+        # Remove da lista
+        self.cartoes = [c for c in self.cartoes if c[0] != card_id]
+        self.atualizar_tabela_cartao()
+        messagebox.showinfo("Sucesso", "Cartão excluído com sucesso!")
+        # Atualiza os comboboxes que usam a lista de cartões
+        self.combo_cartao_utilizado["values"] = [c[1] for c in self.cartoes]
+        self.combo_dashboard["values"] = [c[1] for c in self.cartoes]
+
     def atualizar_tabela_cartao(self):
         self.tabela_cartao.delete(*self.tabela_cartao.get_children())
-        for cartao in self.cartoes:
-            self.tabela_cartao.insert("", "end", values=cartao)
-
-    def prever_fatura_cartao(self, card, reference_date=None):
-        if reference_date is None:
-            reference_date = datetime.now()
-        try:
-            fechamento_day = int(card[6].split('/')[0])
-        except Exception:
-            return 0.0, None, None
-        if reference_date.day >= fechamento_day:
-            cycle_end = datetime(reference_date.year, reference_date.month, fechamento_day)
-        else:
-            if reference_date.month == 1:
-                cycle_end = datetime(reference_date.year - 1, 12, fechamento_day)
-            else:
-                cycle_end = datetime(reference_date.year, reference_date.month - 1, fechamento_day)
-        if cycle_end.month == 1:
-            previous_cycle_end = datetime(cycle_end.year - 1, 12, fechamento_day)
-        else:
-            previous_cycle_end = datetime(cycle_end.year, cycle_end.month - 1, fechamento_day)
-        cycle_start = previous_cycle_end + timedelta(days=1)
-        predicted_total = 0.0
-        for despesa in self.despesas:
-            if despesa[7] == "Cartão de Crédito" and str(despesa[8]).strip() == card[0].strip():
-                try:
-                    expense_date = datetime.strptime(despesa[4], "%d/%m/%Y")
-                    if cycle_start <= expense_date <= cycle_end:
-                        predicted_total += float(despesa[3])
-                except Exception:
-                    continue
-        return predicted_total, cycle_start, cycle_end
+        for card in self.cartoes:
+            # Exibe sem o id; usa o id como iid
+            self.tabela_cartao.insert("", "end", iid=str(card[0]), values=(card[1], card[2], card[3], card[4], card[5], card[6]))
 
     def atualizar_dashboard_cartao(self, event=None):
         selected_card = self.cartao_dashboard_var.get()
         card = None
         for c in self.cartoes:
-            if c[0].strip() == selected_card.strip():
+            if c[1].strip() == selected_card.strip():
                 card = c
                 break
         if not card:
             return
-        limite = float(card[5].replace(',', '.'))
-        total_cartao = sum(float(d[3]) for d in self.despesas if d[7]=="Cartão de Crédito" and str(d[8]).strip() == selected_card.strip())
+        # Aqui, como não temos fechamento e vencimento, o dashboard pode mostrar apenas o total gasto (calculado a partir das despesas com o nome do cartão)
+        limite = float(card[6].replace(',', '.'))
+        total_cartao = sum(float(d[3]) for d in self.despesas if d[7]=="Cartão de Crédito" and d[8].strip() == card[1].strip())
         disponivel = limite - total_cartao
         if disponivel < 0:
             disponivel = 0
         percentual = (total_cartao / limite * 100) if limite > 0 else 0
-        predicted_total, cycle_start, cycle_end = self.prever_fatura_cartao(card)
         self.progress_cartao["value"] = percentual
         self.label_dashboard.config(
-            text=(
-                f"Gastos: R$ {total_cartao:.2f}".replace('.', ',') +
-                f" / Limite: R$ {card[5]} / Disponível: R$ {disponivel:.2f}".replace('.', ',') +
-                (f"\nPrevisão Fatura ({cycle_start.strftime('%d/%m/%Y')} a {cycle_end.strftime('%d/%m/%Y')}): R$ {predicted_total:.2f}".replace('.', ',') if cycle_start and cycle_end else "")
-            )
+            text=(f"Gastos: R$ {total_cartao:.2f}".replace('.', ',') +
+                  f" / Limite: R$ {card[6]} / Disponível: R$ {disponivel:.2f}".replace('.', ','))
         )
         if percentual >= 90:
             messagebox.showwarning("Alerta", f"Você atingiu {percentual:.0f}% do limite do cartão {selected_card}!")
 
-    def atualizar_tabela_despesas_cartao(self):
-        self.tabela_despesas_cartao.delete(*self.tabela_despesas_cartao.get_children())
-        for despesa in self.despesas:
-            if despesa[7] == "Cartão de Crédito":
-                self.tabela_despesas_cartao.insert("", "end", values=despesa)
+    def carregar_cartao_selecionado(self, event):
+        selected = self.tabela_cartao.selection()
+        if not selected:
+            return
+        card_id = int(selected[0])
+        for card in self.cartoes:
+            if card[0] == card_id:
+                self.card_edit_id = card_id
+                self.entry_nome_cartao.delete(0, tk.END)
+                self.entry_nome_cartao.insert(0, card[1])
+                self.entry_nome_usuario.delete(0, tk.END)
+                self.entry_nome_usuario.insert(0, card[2])
+                self.entry_numero_cartao.delete(0, tk.END)
+                self.entry_numero_cartao.insert(0, card[3])
+                self.entry_validade.delete(0, tk.END)
+                self.entry_validade.insert(0, card[4])
+                self.combo_bandeira.set(card[5])
+                self.entry_limite.delete(0, tk.END)
+                self.entry_limite.insert(0, card[6])
+                break
 
     # -------------------------
-    # Função para formatar automaticamente a data de vencimento
+    # Funções Genéricas (Data, Placeholders, Valor)
     # -------------------------
     def formatar_data(self, event, entry, placeholder):
         text = entry.get().strip()
         if not text:
             entry.insert(0, placeholder)
             return
-        # Se o texto não contém barras e possui 8 dígitos, formata automaticamente
         if "/" not in text and len(text) == 8 and text.isdigit():
             try:
                 formatted = f"{text[:2]}/{text[2:4]}/{text[4:]}"
-                datetime.strptime(formatted, "%d/%m/%Y")  # Validação
+                datetime.strptime(formatted, "%d/%m/%Y")
                 entry.delete(0, "end")
                 entry.insert(0, formatted)
             except Exception:
@@ -754,11 +835,7 @@ class SpendingTracker(ttk.Window):
                     entry.insert(0, formatted)
             except Exception:
                 pass
-        # Se nada for feito, o valor permanece
 
-    # -------------------------
-    # PLACEHOLDERS
-    # -------------------------
     def remover_placeholder(self, event, entry, placeholder):
         if entry.get() == placeholder:
             entry.delete(0, "end")
@@ -805,7 +882,195 @@ class SpendingTracker(ttk.Window):
         self.text_relatorio.insert(tk.END, relatorio)
 
     # -------------------------
-    # Backup e Restauração
+    # Aba Metas
+    # -------------------------
+    def configurar_aba_metas(self):
+        self.frame_metas_form = ttk.Frame(self.tab_metas, padding=10)
+        self.frame_metas_form.pack(fill=ttk.X, pady=5)
+        ttk.Label(self.frame_metas_form, text="Nome da Meta:", font=("Helvetica", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky=tk.E)
+        self.entry_meta_nome = ttk.Entry(self.frame_metas_form, width=25)
+        self.entry_meta_nome.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(self.frame_metas_form, text="Valor Meta (R$):", font=("Helvetica", 10, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky=tk.E)
+        self.entry_meta_valor = ttk.Entry(self.frame_metas_form, width=15)
+        self.entry_meta_valor.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(self.frame_metas_form, text="Valor Atual (R$):", font=("Helvetica", 10, "bold")).grid(row=2, column=0, padx=5, pady=5, sticky=tk.E)
+        self.entry_meta_atual = ttk.Entry(self.frame_metas_form, width=15)
+        self.entry_meta_atual.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(self.frame_metas_form, text="Data Inicial:", font=("Helvetica", 10, "bold")).grid(row=3, column=0, padx=5, pady=5, sticky=tk.E)
+        self.entry_meta_data_inicial = ttk.Entry(self.frame_metas_form, width=15)
+        self.entry_meta_data_inicial.grid(row=3, column=1, padx=5, pady=5, sticky=tk.W)
+        self.entry_meta_data_inicial.insert(0, "dd/mm/aaaa")
+        ttk.Label(self.frame_metas_form, text="Data Final:", font=("Helvetica", 10, "bold")).grid(row=4, column=0, padx=5, pady=5, sticky=tk.E)
+        self.entry_meta_data_final = ttk.Entry(self.frame_metas_form, width=15)
+        self.entry_meta_data_final.grid(row=4, column=1, padx=5, pady=5, sticky=tk.W)
+        self.entry_meta_data_final.insert(0, "dd/mm/aaaa")
+        self.botao_cadastrar_meta = ttk.Button(self.frame_metas_form, text="Cadastrar Meta", bootstyle=SUCCESS, command=self.cadastrar_meta)
+        self.botao_cadastrar_meta.grid(row=5, column=0, padx=5, pady=10)
+        self.botao_atualizar_meta = ttk.Button(self.frame_metas_form, text="Atualizar Meta", bootstyle=INFO, command=self.atualizar_meta)
+        self.botao_atualizar_meta.grid(row=5, column=1, padx=5, pady=10)
+        self.frame_metas_tabela = ttk.Frame(self.tab_metas, padding=10)
+        self.frame_metas_tabela.pack(fill=ttk.BOTH, expand=True, pady=5)
+        colunas = ("Nome", "Valor Meta", "Valor Atual", "Progresso (%)", "Data Inicial", "Data Final")
+        self.tabela_metas = ttk.Treeview(self.frame_metas_tabela, columns=colunas, show="headings")
+        self.tabela_metas.pack(fill=ttk.BOTH, expand=True)
+        for col in colunas:
+            self.tabela_metas.heading(col, text=col)
+            self.tabela_metas.column(col, width=120, anchor="center")
+        self.tabela_metas.bind("<<TreeviewSelect>>", self.carregar_meta_selecionada)
+        self.atualizar_tabela_metas()
+
+    def cadastrar_meta(self):
+        nome = self.entry_meta_nome.get().strip()
+        valor_meta_texto = self.entry_meta_valor.get().strip().replace(",", ".")
+        valor_atual_texto = self.entry_meta_atual.get().strip().replace(",", ".")
+        data_inicial = self.entry_meta_data_inicial.get().strip()
+        data_final = self.entry_meta_data_final.get().strip()
+        if not nome or not valor_meta_texto or not data_inicial or not data_final:
+            messagebox.showerror("Erro", "Preencha os campos obrigatórios da meta (Nome, Valor Meta, Data Inicial e Data Final).")
+            return
+        try:
+            valor_meta = float(valor_meta_texto)
+        except ValueError:
+            messagebox.showerror("Erro", "O campo Valor Meta deve ser numérico.")
+            return
+        try:
+            valor_atual = float(valor_atual_texto) if valor_atual_texto else 0.0
+        except ValueError:
+            messagebox.showerror("Erro", "O campo Valor Atual deve ser numérico.")
+            return
+        try:
+            datetime.strptime(data_inicial, "%d/%m/%Y")
+            datetime.strptime(data_final, "%d/%m/%Y")
+        except ValueError:
+            messagebox.showerror("Erro", "Data Inicial ou Data Final inválida. Use o formato dd/mm/aaaa.")
+            return
+        try:
+            self.cursor.execute(
+                "INSERT INTO metas (nome, valor_meta, valor_atual, data_inicial, data_final) VALUES (?, ?, ?, ?, ?)",
+                (nome, valor_meta, valor_atual, data_inicial, data_final)
+            )
+            self.conn.commit()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao inserir meta no banco: {e}")
+            return
+        self.cursor.execute("SELECT id, nome, valor_meta, valor_atual, data_inicial, data_final FROM metas")
+        self.metas = self.cursor.fetchall()
+        self.atualizar_tabela_metas()
+        messagebox.showinfo("Sucesso", "Meta cadastrada com sucesso!")
+        self.limpar_form_meta()
+
+    def carregar_meta_selecionada(self, event):
+        selected = self.tabela_metas.selection()
+        if not selected:
+            return
+        meta_id = self.tabela_metas.item(selected[0])['iid']
+        valores = self.tabela_metas.item(selected[0])['values']
+        self.entry_meta_nome.delete(0, tk.END)
+        self.entry_meta_nome.insert(0, valores[0])
+        self.entry_meta_valor.delete(0, tk.END)
+        self.entry_meta_valor.insert(0, valores[1])
+        self.entry_meta_atual.delete(0, tk.END)
+        self.entry_meta_atual.insert(0, valores[2])
+        self.entry_meta_data_inicial.delete(0, tk.END)
+        self.entry_meta_data_inicial.insert(0, valores[4])
+        self.entry_meta_data_final.delete(0, tk.END)
+        self.entry_meta_data_final.insert(0, valores[5])
+        self.meta_selecionada_id = meta_id
+
+    def atualizar_meta(self):
+        if not hasattr(self, "meta_selecionada_id") or not self.meta_selecionada_id:
+            messagebox.showwarning("Aviso", "Selecione uma meta para atualizar.")
+            return
+        meta_id = self.meta_selecionada_id
+        nome = self.entry_meta_nome.get().strip()
+        valor_meta_texto = self.entry_meta_valor.get().strip().replace(",", ".")
+        valor_atual_texto = self.entry_meta_atual.get().strip().replace(",", ".")
+        data_inicial = self.entry_meta_data_inicial.get().strip()
+        data_final = self.entry_meta_data_final.get().strip()
+        if not nome or not valor_meta_texto or not data_inicial or not data_final:
+            messagebox.showerror("Erro", "Preencha os campos obrigatórios da meta (Nome, Valor Meta, Data Inicial e Data Final).")
+            return
+        try:
+            valor_meta = float(valor_meta_texto)
+        except ValueError:
+            messagebox.showerror("Erro", "O campo Valor Meta deve ser numérico.")
+            return
+        try:
+            valor_atual = float(valor_atual_texto) if valor_atual_texto else 0.0
+        except ValueError:
+            messagebox.showerror("Erro", "O campo Valor Atual deve ser numérico.")
+            return
+        try:
+            datetime.strptime(data_inicial, "%d/%m/%Y")
+            datetime.strptime(data_final, "%d/%m/%Y")
+        except ValueError:
+            messagebox.showerror("Erro", "Data Inicial ou Data Final inválida. Use o formato dd/mm/aaaa.")
+            return
+        try:
+            self.cursor.execute(
+                "UPDATE metas SET nome=?, valor_meta=?, valor_atual=?, data_inicial=?, data_final=? WHERE id=?",
+                (nome, valor_meta, valor_atual, data_inicial, data_final, self.meta_selecionada_id)
+            )
+            self.conn.commit()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao atualizar meta no banco: {e}")
+            return
+        self.cursor.execute("SELECT id, nome, valor_meta, valor_atual, data_inicial, data_final FROM metas")
+        self.metas = self.cursor.fetchall()
+        self.atualizar_tabela_metas()
+        messagebox.showinfo("Sucesso", "Meta atualizada com sucesso!")
+        self.limpar_form_meta()
+
+    def atualizar_tabela_metas(self):
+        self.tabela_metas.delete(*self.tabela_metas.get_children())
+        for meta in self.metas:
+            meta_id, nome, valor_meta, valor_atual, data_inicial, data_final = meta
+            percentual = (valor_atual / valor_meta * 100) if valor_meta > 0 else 0
+            percentual_str = f"{percentual:.2f}%"
+            tag = "meta_ok" if percentual >= 100 else "meta_incompleta"
+            self.tabela_metas.insert("", "end", iid=str(meta_id), values=(nome, f"{valor_meta:.2f}".replace(".", ","), 
+                                                                           f"{valor_atual:.2f}".replace(".", ","), percentual_str,
+                                                                           data_inicial, data_final), tags=(tag,))
+        self.tabela_metas.tag_configure("meta_ok", background="lightgreen")
+        self.tabela_metas.tag_configure("meta_incompleta", background="lightcoral")
+
+    def limpar_form_meta(self):
+        self.entry_meta_nome.delete(0, tk.END)
+        self.entry_meta_valor.delete(0, tk.END)
+        self.entry_meta_atual.delete(0, tk.END)
+        self.entry_meta_data_inicial.delete(0, tk.END)
+        self.entry_meta_data_final.delete(0, tk.END)
+        self.entry_meta_data_inicial.insert(0, "dd/mm/aaaa")
+        self.entry_meta_data_final.insert(0, "dd/mm/aaaa")
+        self.meta_selecionada_id = None
+
+    # -------------------------
+    # Aba Importação de Planilha
+    # -------------------------
+    def importar_planilha(self):
+        filepath = filedialog.askopenfilename(filetypes=[("Excel Files", "*.xlsx")])
+        if not filepath:
+            return
+        try:
+            workbook = openpyxl.load_workbook(filepath)
+            sheet = workbook.active
+            imported_data = []
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                if row[0] is not None:
+                    imported_data.append(row)
+            if imported_data:
+                self.despesas.extend(imported_data)
+                self.atualizar_tabela()
+                self.atualizar_indicador_gastos()
+                self.atualizar_tabela_despesas_cartao()
+                messagebox.showinfo("Sucesso", f"Importados {len(imported_data)} despesas da planilha.")
+            else:
+                messagebox.showinfo("Aviso", "Nenhuma despesa encontrada na planilha.")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Erro ao importar planilha: {e}")
+
+    # -------------------------
+    # Aba Backup e Restauração
     # -------------------------
     def backup_db(self):
         backup_path = filedialog.asksaveasfilename(defaultextension=".db", filetypes=[("Database Files", "*.db")])
@@ -829,7 +1094,10 @@ class SpendingTracker(ttk.Window):
                 self.atualizar_tabela()
                 self.atualizar_tabela_despesas_cartao()
                 self.atualizar_tabela_cartao()
-                self.combo_dashboard["values"] = [c[0] for c in self.cartoes]
+                self.cursor.execute("SELECT id, nome, valor_meta, valor_atual, data_inicial, data_final FROM metas")
+                self.metas = self.cursor.fetchall()
+                self.atualizar_tabela_metas()
+                self.combo_dashboard["values"] = [c[1] for c in self.cartoes]
                 if self.cartoes:
                     self.combo_dashboard.current(0)
                     self.atualizar_dashboard_cartao()
