@@ -51,11 +51,11 @@ python seu_arquivo.py
 ### 🔒 Observação sobre Antivírus
 Por ser um aplicativo empacotado com Python, ao gerar um executável (.exe), pode ser necessário adicionar o programa ou a pasta do projeto como exceção no Windows Defender para evitar alertas falsos de vírus durante testes.
 
-- ** Como adicionar exceção no Windows Defender:
-- **Vá até Configurações > Atualização e Segurança > Segurança do Windows > Proteção contra vírus e ameaças.
-- **Clique em Gerenciar configurações.
-- **Acesse Exclusões > Adicionar ou remover exclusões.
-- **Clique em Adicionar uma exclusão > Pasta e selecione a pasta do seu projeto.
+- Como adicionar exceção no Windows Defender:
+- Vá até Configurações > Atualização e Segurança > Segurança do Windows > Proteção contra vírus e ameaças.
+- Clique em Gerenciar configurações.
+- Acesse Exclusões > Adicionar ou remover exclusões.
+- Clique em Adicionar uma exclusão > Pasta e selecione a pasta do seu projeto.
 
 ### ✅ Instalação das dependências
 
